@@ -10,8 +10,13 @@ def csv_read(file_path):
     print(df_new["Zeitstempel"])
     print(df_new.loc[df_new["Zeitstempel"] > last_timestamp])
 
+def toml_read(file_path):
+    with open(file_path, "rb") as config_file:
+        config = tomli.load(config_file)
+        last_timestamp = config["run"]["last_timestamp"]
+        print("last_timestamp:", last_timestamp + "\n")
+
+
 if __name__ == "__main__":
-    with open("config.toml", "rb") as f:
-        toml_dict = tomli.load(f)
-        
+    toml_read("config.toml")
     csv_read("data.csv")
