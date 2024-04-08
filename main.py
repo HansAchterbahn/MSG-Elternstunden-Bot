@@ -113,9 +113,21 @@ Elternstunden-Bot
 
 
 def nc_forms_api(nextcloud_settings:dict):
+    import json
+    import requests
+
+    api_user     = nextcloud_settings['username']
+    api_key      = nextcloud_settings['app_token']
+    api_endpoint = nextcloud_settings['api_endpoint']
+    api_command1 = nextcloud_settings['api_command1']
+
+    print("API_User:", api_user)
+    print("API_Key:", api_key)
+    print("API_Endpoint:", api_endpoint)
+    print("API_Command1:", api_command1)
 
 if __name__ == "__main__":
     nextcloud_settings, email_settings, changes_settings = toml_read("config.toml")
-    csv_read("data.csv")
+    #csv_read("data.gfisch.csv")
     nc_forms_api(nextcloud_settings)
     write_email(email_settings)
