@@ -113,21 +113,35 @@ Elternstunden-Bot
 
 
 def nc_forms_api(nextcloud_settings:dict):
-    import json
     import requests
+    import io
 
     api_user     = nextcloud_settings['username']
     api_key      = nextcloud_settings['app_token']
+    nc_url      = nextcloud_settings['nc_url']
     api_endpoint = nextcloud_settings['api_endpoint']
-    api_command1 = nextcloud_settings['api_command1']
+    url_get_elternstunden_csv = nextcloud_settings['url_get_elternstunden_csv']
+    api_header   = nextcloud_settings['api_header']
 
-    print("API_User:", api_user)
-    print("API_Key:", api_key)
+    print("API_User:    ", api_user)
+    print("API_Key:     ", api_key)
+    print("NC_URL:      ", nc_url)
     print("API_Endpoint:", api_endpoint)
-    print("API_Command1:", api_command1)
+    print("API_Command1:", url_get_elternstunden_csv)
+    print("API_Header:  ", api_header)
+
+    session = requests.session()
+    session.auth = (api_user, api_key)
+
+    #auth = session.post(nc_url)
+    response = session.get(url_get_elternstunden_csv, headers=api_header)
+    print(response.content.decode('utf-8'))
+    df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), sep=',')
+    print(df)
+
 
 if __name__ == "__main__":
     nextcloud_settings, email_settings, changes_settings = toml_read("config.toml")
     #csv_read("data.gfisch.csv")
     nc_forms_api(nextcloud_settings)
-    write_email(email_settings)
+    #write_email(email_settings)
