@@ -1,8 +1,8 @@
 import pandas as pd
 import tomli
+from tabulate import tabulate
 
-
-last_timestamp = "2023-01-01 00:00:00"
+last_timestamp = "2023-01-01T00:00:00+02:00"
 def csv_read(file_path):
     df_new = pd.read_csv(file_path)        # read csv file to dataframe
     df_new["Zeitstempel"] = (
@@ -77,24 +77,33 @@ Elternstunden-Bot
             Elternstunden-Bot
         </p>
         <p>
-            <table align="center">
-                <tr class="table-head">
-                    <td>Name</td>
-                    <td>Arbeitskreis</td>
-                    <td>Klasse</td>
-                </tr>
+            <table border="1" class="dataframe">
+              <thead>
                 <tr>
-                    <td>Heiz Jakobi</td>
-                    <td>AK Hof</td>
-                    <td>Linde</td>
+                  <th></th>
+                  <th>Datum</th>
+                  <th>Zeit</th>
+                  <th>Klasse</th>
+                  <th>Arbeitskreis</th>
+                  <th>Art der Arbeit</th>
+                  <th>Veranstaltungskontext</th>
+                  <th>E-Mail-Adresse</th>
+                  <th>Familienpseudonym</th>
                 </tr>
+              </thead>
+              <tbody>
                 <tr>
-                    <td>Simone Kältel</td>
-                    <td>AK Expertiese</td>
-                    <td>Buche</td>
+                  <th>0</th>
+                  <td>2024-04-10</td>
+                  <td>02:20</td>
+                  <td>Linde</td>
+                  <td>Erdkinderplan</td>
+                  <td>Planung</td>
+                  <td>Keiner</td>
+                  <td>mario.hesse@gfisch.de</td>
+                  <td>GFisch</td>
                 </tr>
-                <tr class=table-foot>
-                </tr>
+              </tbody>
             </table>
         </p>
     </body>
@@ -113,32 +122,44 @@ Elternstunden-Bot
 
 
 def nc_forms_api(nextcloud_settings:dict):
-    import requests
-    import io
+    import requests         # Paket für API-Anfragen
+    import io               # Paket für einfache Input/Output Verarbeitung
 
-    api_user     = nextcloud_settings['username']
-    api_key      = nextcloud_settings['app_token']
-    nc_url      = nextcloud_settings['nc_url']
-    api_endpoint = nextcloud_settings['api_endpoint']
-    url_get_elternstunden_csv = nextcloud_settings['url_get_elternstunden_csv']
-    api_header   = nextcloud_settings['api_header']
+    # Konfigurationsdaten aus Config-Dict holen
+    api_user                        = nextcloud_settings['username']
+    api_key                         = nextcloud_settings['app_token']
+    api_url_get_elternstunden_csv   = nextcloud_settings['url_get_elternstunden_csv']
+    api_header                      = nextcloud_settings['api_header']
 
-    print("API_User:    ", api_user)
-    print("API_Key:     ", api_key)
-    print("NC_URL:      ", nc_url)
-    print("API_Endpoint:", api_endpoint)
-    print("API_Command1:", url_get_elternstunden_csv)
-    print("API_Header:  ", api_header)
+    # Verbinden mit der Nextcloud API, eröffnen einer Session, Elternstunden.csv herunterladen & in Pandas Datenrahmen speichern
+    session = requests.session()            # API öffnen
+    session.auth = (api_user, api_key)      # Authentifizieren (User + Passwort)
+    response = session.get(api_url_get_elternstunden_csv, headers=api_header)       # Elternstunden CSV Datei als String abfragen
+    #print(response.content.decode('utf-8'))                                     # Anzeige der Datei - Todo: kann weg
+    df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), sep=',')    # einlesen der CSV Datei in einen Pandas Datenrahmen
 
-    session = requests.session()
-    session.auth = (api_user, api_key)
+    # Bearbeiten des Pandas Dataframes: Prüfen, ob neue Einträge gemacht wurden seit dem letzten Programmdurchlauf
+    Letzter_Zeitstempel = '2024-04-10T18:05:30'
+    Formular_Kategorien = ['Datum','Zeit','Klasse','Arbeitskreis','Art der Arbeit', 'Veranstaltungskontext','E-Mail-Adresse','Familienpseudonym']
+    df_new = df.loc[df['Zeitstempel']> Letzter_Zeitstempel, Formular_Kategorien]
+    print(tabulate(df_new, headers = 'keys', tablefmt = 'psql'))
+    html_table = df.loc[df['Zeitstempel'] <= Letzter_Zeitstempel, Formular_Kategorien].to_html()
 
-    #auth = session.post(nc_url)
-    response = session.get(url_get_elternstunden_csv, headers=api_header)
-    print(response.content.decode('utf-8'))
-    df = pd.read_csv(io.StringIO(response.content.decode('utf-8')), sep=',')
-    print(df)
+    # Für jeden neuen Eintrag werden die E-Mail-Adressen ermittelt und alle bisherigen Einträge gebündelt als
+    # HTML-Tabelle den einzelnen E-Mail-Adressen aus den neuen Einträgen zugeordnet.
+    emails = []
+    for email in set(df_new['E-Mail-Adresse']):
+        df_feedback = df.loc[df['E-Mail-Adresse']==email, Formular_Kategorien]
+        emails.append({
+            'E-Mail-Adresse':email,
+            'Familienpseudonym':df_feedback.iloc[-1]['Familienpseudonym'],
+            'HTML-Tabelle':df_feedback.to_html(),
+            'Text-Tabelle':tabulate(df_feedback, headers = 'keys', tablefmt = 'psql', showindex=False)
+        })
+        print(tabulate(df_feedback, headers = 'keys', tablefmt = 'psql', showindex=False))
 
+    for email in emails:
+        print(email)
 
 if __name__ == "__main__":
     nextcloud_settings, email_settings, changes_settings = toml_read("config.toml")
