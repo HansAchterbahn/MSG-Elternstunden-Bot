@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd                             # allows pandas dataframes → easy data management
 import toml                                     # read and write toml config files
 from tabulate import tabulate                   # format beautiful tables
@@ -16,18 +18,15 @@ def elternstunden_bot(max_new_lines=100):
         email_settings = config["email"]                # get e-mail config settings
         changes_settings = config["changes"]            # get changes config settings
 
+    if changes_settings["to_many_new_entries"] == True:
+        return "Error: To many new entries"
+
     # get config data for nextcloud api
     api_user                        = nextcloud_settings['username']
     api_key                         = nextcloud_settings['app_token']
     api_url_get_elternstunden_csv   = nextcloud_settings['url_get_elternstunden_csv']
     api_header                      = nextcloud_settings['api_header']
     export_table_columns            = nextcloud_settings['export_table_columns']
-
-    # get e-mail server settings from config file
-    smtp_server     = email_settings["smtp_server"]
-    port            = email_settings["smtp_port"]
-    password        = email_settings["password"]
-    sender          = email_settings["user"]
 
     # get last timestamp
     last_timestamp                  = changes_settings['last_timestamp']
@@ -62,7 +61,11 @@ def elternstunden_bot(max_new_lines=100):
             subject = "Fehler im MSG Elternstunden-Bot",
             message_plain = f"Fehler:\n{error_string}\n\nEinträge neu:\n{tabulate(df_new_entries, headers = 'keys', tablefmt = 'mixed_outline')}"
         )
-        return error_string
+        config["changes"]["to_many_new_entries"] = True
+        with open('config.toml', "w") as f:
+            toml.dump(config, f)
+
+        return "Error: " + error_string
 
     # Debugging message: Show all entries and new entries
     print("Einträge gesamt:")
@@ -97,7 +100,7 @@ def elternstunden_bot(max_new_lines=100):
 
         # get e-mail message from config file and paste actual family_pseudonym and table_html/plain to string
         message_plain = email_settings['message_plain'].format(Familienpseudonym=family_pseudonym, Tabelle=table_plain)
-        message_html = email_settings['message_html'].format(Familienpseudonym=family_pseudonym, Tabelle=table_html)
+        message_html  = email_settings['message_html' ].format(Familienpseudonym=family_pseudonym, Tabelle=table_html)
 
         # append actual e-mail address, html- and plain-message to emails array
         emails.append({
@@ -142,8 +145,10 @@ def send_email(receiver:str, subject:str='',message_plain:str='', message_html:s
     message["From"] = sender
     message["To"] = receiver
     message["Subject"] = subject
-    message.attach(MIMEText(message_plain, 'plain'))
-    message.attach(MIMEText(message_html, 'html'))
+    if message_plain is not '':
+        message.attach(MIMEText(message_plain, 'plain'))
+    if message_html is not '':
+        message.attach(MIMEText(message_html, 'html'))
 
     # send e-mail
     context = ssl.create_default_context()
@@ -152,4 +157,5 @@ def send_email(receiver:str, subject:str='',message_plain:str='', message_html:s
         server.sendmail(sender, receiver, message.as_string())
 
 if __name__ == "__main__":
-    elternstunden_bot(2)
+    feedback = elternstunden_bot()
+    print(feedback)
