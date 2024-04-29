@@ -22,9 +22,10 @@ def elternstunden_bot(max_new_lines=100):
         return "Error: To many new entries"
 
     # get config data for nextcloud api
-    api_user                        = nextcloud_settings['username']
-    api_key                         = nextcloud_settings['app_token']
-    api_url_get_elternstunden_csv   = nextcloud_settings['url_get_elternstunden_csv']
+    api_user                        = os.environ.get("ELTERNSTUNDEN_BOT_NC_USER")  # nextcloud_settings['username']
+    api_key                         = os.environ.get("ELTERNSTUNDEN_BOT_NC_PASS")  # nextcloud_settings['app_token']
+    api_url_get_config_toml         = os.environ.get("ELTERNSTUNDEN_BOT_NC_URL_DAV_CONFIG_TOML")  # nextcloud_settings['url_dav_config_toml']
+    api_url_get_elternstunden_csv   = nextcloud_settings['url_forms_get_elternstunden_csv']
     api_header                      = nextcloud_settings['api_header']
     export_table_columns            = nextcloud_settings['export_table_columns']
 
