@@ -11,31 +11,39 @@ from email.mime.multipart import MIMEMultipart  # MIME multipart type (e-mail)
 
 
 def elternstunden_bot(max_new_lines=100):
-    # get toml config data
-    with open('config.toml', "r") as f:                 # open config.toml with read rights
-        config = toml.load(f)                           # load file content to variable
-        nextcloud_settings = config["nextcloud"]        # get nextcloud config settings
-        email_settings = config["email"]                # get e-mail config settings
-        changes_settings = config["changes"]            # get changes config settings
+
+    # get config data for nextcloud dav api from environment variables
+    nc_dav_settings = dict()
+    nc_dav_settings["user"]      = os.environ.get("ELTERNSTUNDEN_BOT_NC_USER")
+    nc_dav_settings["key"]       = os.environ.get("ELTERNSTUNDEN_BOT_NC_PASS")
+    nc_dav_settings["url"]       = os.environ.get("ELTERNSTUNDEN_BOT_NC_URL_DAV_CONFIG_TOML")
+    nc_dav_settings["headers"]   = ''
+
+    # connect to MSG Nextcloud and query config.toml from Dav API
+    response = get_nc_object(nc_dav_settings)
+    config = toml.loads(response.content.decode('utf-8'))  # read string in to a toml object (loads = load string)
+
+    # get TOML config data in to separat dicts
+    nc_settings         = config["nextcloud"]       # get nextcloud config settings
+    email_settings      = config["email"]           # get e-mail config settings
+    changes_settings    = config["changes"]         # get changes config settings
+
+    # get config data for nextcloud forms api from TOML config file
+    nc_forms_settings = dict()
+    nc_forms_settings["user"]       = os.environ.get("ELTERNSTUNDEN_BOT_NC_USER")
+    nc_forms_settings["key"]        = os.environ.get("ELTERNSTUNDEN_BOT_NC_PASS")
+    nc_forms_settings["url"]        = nc_settings['url_forms_get_elternstunden_csv']
+    nc_forms_settings["headers"]    = nc_settings['forms_api_header']
+    export_table_columns            = nc_settings['forms_export_table_columns']
 
     if changes_settings["to_many_new_entries"] == True:
         return "Error: To many new entries"
 
-    # get config data for nextcloud api
-    api_user                        = os.environ.get("ELTERNSTUNDEN_BOT_NC_USER")  # nextcloud_settings['username']
-    api_key                         = os.environ.get("ELTERNSTUNDEN_BOT_NC_PASS")  # nextcloud_settings['app_token']
-    api_url_get_config_toml         = os.environ.get("ELTERNSTUNDEN_BOT_NC_URL_DAV_CONFIG_TOML")  # nextcloud_settings['url_dav_config_toml']
-    api_url_get_elternstunden_csv   = nextcloud_settings['url_forms_get_elternstunden_csv']
-    api_header                      = nextcloud_settings['api_header']
-    export_table_columns            = nextcloud_settings['export_table_columns']
-
     # get last timestamp
     last_timestamp                  = changes_settings['last_timestamp']
 
-    # connect to nextcloud API
-    session = requests.session()            # connect to API and open a session
-    session.auth = (api_user, api_key)      # authentification (user + password)
-    response = session.get(api_url_get_elternstunden_csv, headers=api_header)   # get Elternstunden as CSV file sting
+    # query Nextcloud Forms API
+    response = get_nc_object(nc_forms_settings)
 
     # create pandas dataframe from CSV file string, check for changes since last timestamp and modify dataframe
     df = pd.read_csv(                                           # read pandas dataframe
@@ -58,13 +66,13 @@ def elternstunden_bot(max_new_lines=100):
         error_string = f"(lines added = {lines_added}) > (max_new_lines = {max_new_lines})"
 
         send_email(
+            settings=email_settings,
             receiver = "webmaster@msg-freunde.de",
             subject = "Fehler im MSG Elternstunden-Bot",
             message_plain = f"Fehler:\n{error_string}\n\nEinträge neu:\n{tabulate(df_new_entries, headers = 'keys', tablefmt = 'mixed_outline')}"
         )
-        config["changes"]["to_many_new_entries"] = True
-        with open('config.toml', "w") as f:
-            toml.dump(config, f)
+        config["changes"]["to_many_new_entries"] = True             # set flag in TOML file for to many new lines
+        put_nc_object(nc_dav_settings, config)
 
         return "Error: " + error_string
 
@@ -114,41 +122,66 @@ def elternstunden_bot(max_new_lines=100):
     for email in emails:
         # send e-mail
         send_email(
-            receiver      = email['e-mail-address'],
-            subject       = "MSG Elternstunden",
-            message_plain = email['message_plain'],
-            message_html  = email['message_html']
+            settings        = email_settings,
+            receiver        = email['e-mail-address'],
+            subject         = "MSG Elternstunden",
+            message_plain   = email['message_plain'],
+            message_html    = email['message_html']
         )
         print("E-Mails gesendet:", email['e-mail-address'])
 
 
-    # write changes to toml config file
-    config["changes"]["last_timestamp"] = new_last_timestamp
-    config["changes"]["lines_added_last_run"] = lines_added
-    with open('config.toml', "w") as f:
-        toml.dump(config, f)
+    # connect to MSG Nextcloud and write new/changed config.toml to Dav API
+    config["changes"]["last_timestamp"]         = new_last_timestamp
+    config["changes"]["lines_added_last_run"]   = lines_added
+    response = put_nc_object(nc_dav_settings, config)
 
     return f"New lines added: {lines_added}"
 
-def send_email(receiver:str, subject:str='',message_plain:str='', message_html:str=''):
-    with open('config.toml', "r") as f:                 # open config.toml with read rights
-        config = toml.load(f)                           # load file content to variable
-        email_settings = config["email"]                # get e-mail config settings
+def get_nc_object(settings:dict):
+    # get Nextcloud login data and URL
+    user    = settings["user"]                    # Nextcloud API user
+    key     = settings["key"]                     # Nextcloud API app token
+    url     = settings["url"]                     # Nextcloud API URL to config.toml
+    headers = settings["headers"]                 # Nextcloud API headers
 
+    # connect to MSG Nextcloud and query config.toml from Dav API
+    session = requests.session()                            # open a session
+    session.auth = (user, key)                              # hand over login data (user + password)
+    response = session.get(url=url, headers=headers)        # get config.toml from MSG Nextcloud as sting
+
+    return response
+                                         # return toml object
+def put_nc_object(settings:dict, object):
+    # get Nextcloud login data and URL
+    user    = settings["user"]            # Nextcloud API user
+    key     = settings["key"]             # Nextcloud API app token
+    url     = settings["url"]             # Nextcloud API URL to config.toml
+
+    # connect to MSG Nextcloud and put config.toml to Dav API
+    session = requests.session()                            # open a session
+    session.auth = (user, key)                      # hand over login data (user + password)
+    response = session.put(
+        url=url,
+        data=toml.dumps(object).encode('utf-8'))       # get config.toml from MSG Nextcloud as sting
+
+    return response                                 # return put response content
+
+def send_email(settings:dict, receiver:str, subject:str= '', message_plain:str= '', message_html:str= ''):
     # get e-mail server settings from config file
-    smtp_server     = email_settings["smtp_server"]
-    port            = email_settings["smtp_port"]
-    password        = email_settings["password"]
-    sender          = email_settings["user"]
+    smtp_server     = settings["smtp_server"]
+    port            = settings["smtp_port"]
+    password        = settings["password"]
+    sender          = settings["user"]
 
     # create e-mail-message
     message = MIMEMultipart('alternative')
     message["From"] = sender
     message["To"] = receiver
     message["Subject"] = subject
-    if message_plain is not '':
+    if message_plain != '':
         message.attach(MIMEText(message_plain, 'plain'))
-    if message_html is not '':
+    if message_html != '':
         message.attach(MIMEText(message_html, 'html'))
 
     # send e-mail
