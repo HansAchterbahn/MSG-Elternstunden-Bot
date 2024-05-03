@@ -25,15 +25,11 @@ before_script:
 
 run:
   script:
-    - pip install os
     - pip install pandas
     - pip install toml
     - pip install tabulate
     - pip install requests
-    - pip install io
-    - pip install smtplib
-    - pip install ssl
-    - pip install email
+    - python main.py
     
   artifacts:
     paths:
