@@ -24,6 +24,7 @@ before_script:
   - source venv/bin/activate
 
 run:
+  stage: deploy
   script:
     - pip install pandas
     - pip install toml
@@ -31,8 +32,5 @@ run:
     - pip install requests
     - python main.py
     
-  artifacts:
-    paths:
-      - build/*
 
 
