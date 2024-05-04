@@ -1,7 +1,4 @@
-# MSG-Elternstunden-bot
-
-![Pipeline Status](https://git.cccgoe.de/h8/msg-elternstunden-bot/badges/main/pipeline.svg)
-
+# MSG-Elternstunden-Bot
 
 Dieses Pythonskript wurde für die Montessori Schule Göttingen (MSG) geschrieben, um Feedback zur Elternstundenerfassung zu geben.
 
